@@ -31,7 +31,7 @@ export async function POST(request: Request) {
     let crucibleContext = ""
     try {
       const crucibleResponse = await fetch(
-        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/retrieval/crucible`,
+  `${request.url.split('/api/')[0]}/api/retrieval/crucible`,
         {
           method: "POST",
           headers: {

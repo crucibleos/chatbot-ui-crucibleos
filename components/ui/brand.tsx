@@ -5,7 +5,7 @@ import { FC } from "react"
 import Image from "next/image"
 
 interface BrandProps {
-  theme?: "dark" 
+  theme?: "dark" | "light"
 }
 
 export const Brand: FC<BrandProps> = ({ theme = "dark" }) => {

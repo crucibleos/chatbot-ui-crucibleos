@@ -18,10 +18,10 @@ export const Brand: FC<BrandProps> = ({ theme = "dark" }) => {
     >
       <div className="mb-2">
         <Image 
-          src="/dark-brand-logo.svg" 
-          alt="Crucible OS Logo"
-          width={120}
-          height={40}
+          src="/icon-512x512.png" 
+          alt="Crucible OS"
+          width={80}
+          height={80}
           priority
         />
       </div>

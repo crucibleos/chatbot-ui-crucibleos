@@ -61,7 +61,7 @@ export const metadata: Metadata = {
 }
 
 export const viewport: Viewport = {
-  themeColor: "#000000"
+  themeColor: "#00a6f7" // Updated to brand color
 }
 
 const i18nNamespaces = ["translation"]
@@ -87,9 +87,10 @@ export default async function RootLayout({
   const { t, resources } = await initTranslations(locale, i18nNamespaces)
 
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" suppressHydrationWarning className="dark">
       <body className={inter.className}>
-        <Providers attribute="class" defaultTheme="dark">
+        {/* Force dark mode - remove theme switching ability */}
+        <Providers attribute="class" defaultTheme="dark" forcedTheme="dark" enableSystem={false}>
           <TranslationsProvider
             namespaces={i18nNamespaces}
             locale={locale}

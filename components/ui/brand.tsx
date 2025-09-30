@@ -16,13 +16,14 @@ export const Brand: FC<BrandProps> = ({ theme = "dark" }) => {
       target="_blank"
       rel="noopener noreferrer"
     >
-      <div className="mb-2">
+      <div className="mb-2 flex h-20 w-20 items-center justify-center">
         <Image 
           src="/icon-512x512.png" 
           alt="Crucible OS"
           width={80}
           height={80}
           priority
+          unoptimized
         />
       </div>
 

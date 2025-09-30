@@ -2,25 +2,31 @@
 
 import Link from "next/link"
 import { FC } from "react"
-import { ChatbotUISVG } from "../icons/chatbotui-svg"
+import Image from "next/image"
 
 interface BrandProps {
-  theme?: "dark" | "light"
+  theme?: "dark" 
 }
 
 export const Brand: FC<BrandProps> = ({ theme = "dark" }) => {
   return (
     <Link
       className="flex cursor-pointer flex-col items-center hover:opacity-50"
-      href="https://www.chatbotui.com"
+      href="https://crucibleos.com"
       target="_blank"
       rel="noopener noreferrer"
     >
       <div className="mb-2">
-        <ChatbotUISVG theme={theme === "dark" ? "dark" : "light"} scale={0.3} />
+        <Image 
+          src="/dark-brand-logo.svg" 
+          alt="Crucible OS Logo"
+          width={120}
+          height={40}
+          priority
+        />
       </div>
 
-      <div className="text-4xl font-bold tracking-wide">Chatbot UI</div>
+      <div className="text-4xl font-bold tracking-wide">Crucible OS</div>
     </Link>
   )
 }

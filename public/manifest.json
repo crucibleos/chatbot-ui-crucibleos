@@ -1,10 +1,10 @@
 {
-  "short_name": "Chatbot UI",
-  "name": "Chatbot UI",
+  "short_name": "Crucible OS",
+  "name": "Crucible OS AI Chat",
   "icons": [
     {
       "src": "/icon-192x192.png",
-      "type": "image/ico",
+      "type": "image/png",
       "sizes": "192x192"
     },
     {
@@ -21,6 +21,6 @@
   ],
   "start_url": "/",
   "display": "standalone",
-  "theme_color": "#000000",
-  "background_color": "#000000"
+  "theme_color": "#00a6f7",
+  "background_color": "#0a0a0a"
 }

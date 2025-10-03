@@ -46,6 +46,7 @@ export default function WorkspaceLayout({ children }: WorkspaceLayoutProps) {
     selectedWorkspace,
     setSelectedWorkspace,
     setSelectedChat,
+    setSelectedAssistant,
     setChatMessages,
     setUserInput,
     setIsGenerating,
@@ -96,6 +97,19 @@ export default function WorkspaceLayout({ children }: WorkspaceLayoutProps) {
 
     const assistantData = await getAssistantWorkspacesByWorkspaceId(workspaceId)
     setAssistants(assistantData.assistants)
+
+    // Auto-select Maverick assistant
+    if (assistantData.assistants.length > 0) {
+      const maverickAssistant = assistantData.assistants.find(
+        assistant => assistant.name === "Maverick"
+      )
+      if (maverickAssistant) {
+        setSelectedAssistant(maverickAssistant)
+      } else {
+        // If Maverick not found, select the first assistant
+        setSelectedAssistant(assistantData.assistants[0])
+      }
+    }
 
     for (const assistant of assistantData.assistants) {
       let url = ""

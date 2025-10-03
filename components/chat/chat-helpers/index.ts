@@ -395,9 +395,7 @@ export const handleCreateMessages = async (
   isRegeneration: boolean,
   retrievedFileItems: Tables<"file_items">[],
   setChatMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>,
-  setChatFileItems: React.Dispatch
-    React.SetStateAction<Tables<"file_items">[]>
-  >,
+  setChatFileItems: React.Dispatch<React.SetStateAction<Tables<"file_items">[]>>,
   setChatImages: React.Dispatch<React.SetStateAction<MessageImage[]>>,
   selectedAssistant: Tables<"assistants"> | null
 ) => {

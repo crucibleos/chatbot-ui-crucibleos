@@ -27,11 +27,15 @@ export async function POST(request: Request) {
       process.env.SUPABASE_SERVICE_ROLE_KEY!
     )
 
-    // Search for similar insights using our new function
+    // Format the embedding as a string for PostgREST
+    // PostgREST expects: '[0.1,0.2,0.3,...]'
+    const embeddingString = `[${queryEmbedding.join(',')}]`
+
+    // Search for similar insights
     const { data: insights, error } = await supabase.rpc(
       "match_extraction_insights",
       {
-        query_embedding: queryEmbedding,
+        query_embedding: embeddingString,
         match_threshold: 0.7,
         match_count: 5
       }

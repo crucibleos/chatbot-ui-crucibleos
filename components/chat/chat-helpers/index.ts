@@ -108,7 +108,7 @@ export const createTempMessages = (
   let tempAssistantChatMessage: ChatMessage = {
     message: {
       chat_id: "",
-      assistant_id: selectedAssistant?.id || null,
+      assistant_id: null,
       content: "",
       created_at: "",
       id: uuidv4(),
@@ -348,7 +348,7 @@ export const handleCreateChat = async (
   profile: Tables<"profiles">,
   selectedWorkspace: Tables<"workspaces">,
   messageContent: string,
-  selectedAssistant: Tables<"assistants">,
+  selectedAssistant: Tables<"assistants"> | null,
   newMessageFiles: ChatFile[],
   setSelectedChat: React.Dispatch<React.SetStateAction<Tables<"chats"> | null>>,
   setChats: React.Dispatch<React.SetStateAction<Tables<"chats">[]>>,
@@ -357,15 +357,15 @@ export const handleCreateChat = async (
   const createdChat = await createChat({
     user_id: profile.user_id,
     workspace_id: selectedWorkspace.id,
-    assistant_id: selectedAssistant?.id || null,
-    context_length: chatSettings.contextLength,
-    include_profile_context: chatSettings.includeProfileContext,
-    include_workspace_instructions: chatSettings.includeWorkspaceInstructions,
-    model: chatSettings.model,
+    assistant_id: null,
+    context_length: 4096,
+    include_profile_context: true,
+    include_workspace_instructions: true,
+    model: "gpt-3.5-turbo",
     name: messageContent.substring(0, 100),
-    prompt: chatSettings.prompt,
-    temperature: chatSettings.temperature,
-    embeddings_provider: chatSettings.embeddingsProvider
+    prompt: "Crucible OS Coach",
+    temperature: 0.7,
+    embeddings_provider: "openai"
   })
 
   setSelectedChat(createdChat)
@@ -395,7 +395,7 @@ export const handleCreateMessages = async (
   isRegeneration: boolean,
   retrievedFileItems: Tables<"file_items">[],
   setChatMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>,
-  setChatFileItems: React.Dispatch<
+  setChatFileItems: React.Dispatch
     React.SetStateAction<Tables<"file_items">[]>
   >,
   setChatImages: React.Dispatch<React.SetStateAction<MessageImage[]>>,
@@ -414,7 +414,7 @@ export const handleCreateMessages = async (
 
   const finalAssistantMessage: TablesInsert<"messages"> = {
     chat_id: currentChat.id,
-    assistant_id: selectedAssistant?.id || null,
+    assistant_id: null,
     user_id: profile.user_id,
     content: generatedText,
     model: modelData.modelId,

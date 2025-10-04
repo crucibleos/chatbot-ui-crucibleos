@@ -1551,26 +1551,25 @@ export type Database = {
         Returns: boolean
       }
       search_extraction_insights: {
-        Args: {
-          search_query: string
-          match_limit?: number
-        }
-        Returns: {
-          id: string
-          primary_tag: string
-          secondary_tag: string
-          tertiary_tag: string
-          problem_statement: string
-          solution_given: string | null
-          implementation_steps: string | null
-          agent_actions: string | null
-          business_context: string | null
-          financial_impact: string | null
-          priority_level: string | null
-          power_quote: string | null
-          similarity_score: number
-        }[]
-      }
+  Args: {
+    query_embedding: string  // Changed from search_query
+    match_limit?: number
+  }
+  Returns: {
+    id: string
+    primary_tag: string
+    secondary_tag: string
+    tertiary_tag: string
+    problem_statement: string
+    solution_given: string
+    implementation_steps: string
+    financial_impact: string
+    power_quote: string
+    business_context: string
+    priority_level: string
+    similarity: number
+  }[]
+}
     }
     Enums: {
       [_ in never]: never

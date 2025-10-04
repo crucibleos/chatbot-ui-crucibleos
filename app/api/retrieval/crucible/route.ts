@@ -1,3 +1,6 @@
+import { checkApiKey, getServerProfile } from "@/lib/server/server-chat-helpers"
+import { Database } from "@/supabase/types"
+import { createClient } from "@supabase/supabase-js"
 import OpenAI from "openai"
 
 export async function POST(request: Request) {
@@ -7,60 +10,65 @@ export async function POST(request: Request) {
   }
 
   try {
-    // Initialize OpenAI to generate embedding
-    const openai = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY!
-    })
+    const supabaseAdmin = createClient<Database>(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    )
 
-    // Generate embedding for the user's question
-    const embeddingResponse = await openai.embeddings.create({
+    const profile = await getServerProfile()
+
+    // Check API key based on Azure or regular OpenAI
+    if (profile.use_azure_openai) {
+      checkApiKey(profile.azure_openai_api_key, "Azure OpenAI")
+    } else {
+      checkApiKey(profile.openai_api_key, "OpenAI")
+    }
+
+    // Initialize OpenAI client
+    let openai
+    if (profile.use_azure_openai) {
+      openai = new OpenAI({
+        apiKey: profile.azure_openai_api_key || "",
+        baseURL: `${profile.azure_openai_endpoint}/openai/deployments/${profile.azure_openai_embeddings_id}`,
+        defaultQuery: { "api-version": "2023-12-01-preview" },
+        defaultHeaders: { "api-key": profile.azure_openai_api_key }
+      })
+    } else {
+      openai = new OpenAI({
+        apiKey: profile.openai_api_key || "",
+        organization: profile.openai_organization_id
+      })
+    }
+
+    // Generate embedding from user query
+    const response = await openai.embeddings.create({
       model: "text-embedding-3-small",
       input: userInput
     })
 
-    const queryEmbedding = embeddingResponse.data[0].embedding
+    const queryEmbedding = response.data[0].embedding
 
-    // Call Supabase REST API directly (bypasses PostgREST issues)
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
+    // Search extraction insights using vector similarity
+    const { data: insights, error } = await supabaseAdmin.rpc(
+      "search_extraction_insights",
+      {
+        query_embedding: queryEmbedding as any,
+        match_limit: 5
+      }
+    )
 
-    const response = await fetch(`${supabaseUrl}/rest/v1/rpc/match_extraction_insights`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'apikey': supabaseKey,
-        'Authorization': `Bearer ${supabaseKey}`,
-        'Prefer': 'return=representation'
-      },
-      body: JSON.stringify({
-        query_embedding: queryEmbedding,
-        match_threshold: 0.7,
-        match_count: 5
-      })
-    })
-
-    if (!response.ok) {
-      const errorText = await response.text()
-      console.error('Supabase error:', errorText)
-      throw new Error(`Supabase RPC failed: ${response.status} - ${errorText}`)
+    if (error) {
+      throw error
     }
 
-    const insights = await response.json()
-
-    console.log(`✅ Found ${insights?.length || 0} relevant insights for: "${userInput}"`)
-
     return new Response(JSON.stringify({ results: insights || [] }), {
-      status: 200,
-      headers: { "Content-Type": "application/json" }
+      status: 200
     })
   } catch (error: any) {
-    console.error("Error in crucible route:", error)
     const errorMessage = error.message || "An unexpected error occurred"
-    return new Response(JSON.stringify({ 
-      message: errorMessage,
-      error: error.toString() 
-    }), {
-      status: 500
+    const errorCode = error.status || 500
+    return new Response(JSON.stringify({ message: errorMessage }), {
+      status: errorCode
     })
   }
 }

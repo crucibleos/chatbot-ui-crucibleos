@@ -10,6 +10,92 @@ export const runtime: ServerRuntime = "edge" // Consider Node runtime if using s
 
 export async function POST(request: Request) {
   const json = await request.json()
+  // ====== CRUCIBLE RAG INJECTION (BEGIN) ======
+try {
+  // Kill switch from env, so you can turn this on/off in Vercel
+  if (process.env.ENABLE_CRUCIBLE_RAG === "1") {
+    // 1) Pull the last user message text
+    const body: any = json ?? {};
+    const lastUserMsg =
+      Array.isArray(body.messages)
+        ? [...body.messages].reverse().find((m: any) => m.role === "user")?.content ?? ""
+        : body.userInput || body.input || body.query || "";
+
+    if (typeof lastUserMsg === "string" && lastUserMsg.trim().length > 0) {
+      // 2) Build embedding
+      const openaiForEmb = new (require("openai")).default({ apiKey: process.env.OPENAI_API_KEY! });
+      const emb = await openaiForEmb.embeddings.create({
+        model: "text-embedding-3-small",
+        input: lastUserMsg
+      });
+      const queryEmbedding = emb.data[0].embedding.map(Number);
+
+      // 3) Fetch top insights
+      const { createClient } = require("@supabase/supabase-js");
+      const supabaseAdmin = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.SUPABASE_SERVICE_ROLE_KEY! // server-side only
+      );
+      const { data: insights, error: ragError } = await supabaseAdmin.rpc(
+        "search_extraction_insights_v2",
+        { query_embedding: queryEmbedding, match_limit: 12 }
+      );
+      if (ragError) console.error("Crucible RPC error:", ragError.message);
+
+      // Helper to trim long fields
+      const trim = (v: any, n: number) => {
+        if (!v) return "";
+        const s = String(v);
+        return s.length > n ? s.slice(0, n - 1) + "…" : s;
+      };
+
+      // 4) Prepend structured context with real instructions
+      if (Array.isArray(body.messages) && (insights?.length ?? 0) > 0) {
+        const context = insights.map((i: any, idx: number) => {
+          const tags = [i.primary_tag, i.secondary_tag, i.tertiary_tag].filter(Boolean).join(" / ");
+          return [
+            `#${idx + 1} [${tags}] id=${i.id} sim=${i.similarity.toFixed(3)}`,
+            `Problem: ${trim(i.problem_statement, 350)}`,
+            `Solution: ${trim(i.solution_given, 350)}`,
+            i.implementation_steps ? `Steps: ${trim(i.implementation_steps, 350)}` : "",
+            i.financial_impact ? `Impact: ${trim(i.financial_impact, 200)}` : "",
+            i.power_quote ? `Quote: ${trim(i.power_quote, 160)}` : "",
+            i.business_context ? `Context: ${trim(i.business_context, 200)}` : "",
+            i.priority_level ? `Priority: ${i.priority_level}` : ""
+          ].filter(Boolean).join("\n");
+        }).join("\n\n");
+
+        const instruction =
+          "You are a residential home services operator. Use the Crucible insights below as primary evidence. " +
+          "Return a practical, detailed answer with a numbered playbook, concrete scripts, and expected metrics. " +
+          "Prefer specifics over fluff. If something is missing, state the assumption and continue.\n\n";
+
+        body.messages = [
+          {
+            role: "system",
+            content: instruction + "=== CRUCIBLE INSIGHTS BEGIN ===\n" + context + "\n=== CRUCIBLE INSIGHTS END ==="
+          },
+          ...body.messages
+        ];
+
+        // write back to json so the downstream OpenAI call sees it
+        Object.assign(json, body);
+
+        console.log("Crucible RAG included insights:", insights.length);
+      } else {
+        console.log("Crucible RAG: no insights returned");
+      }
+    } else {
+      console.log("Crucible RAG: no user text found");
+    }
+  } else {
+    console.log("Crucible RAG disabled (ENABLE_CRUCIBLE_RAG != 1)");
+  }
+} catch (e: any) {
+  console.error("Crucible RAG injection error:", e?.message || e);
+}
+// ====== CRUCIBLE RAG INJECTION (END) ======
+
   const { chatSettings, messages } = json as {
     chatSettings: ChatSettings
     messages: any[]

@@ -4,8 +4,9 @@ import { OpenAIStream, StreamingTextResponse } from "ai"
 import { ServerRuntime } from "next"
 import OpenAI from "openai"
 import { ChatCompletionCreateParamsBase } from "openai/resources/chat/completions.mjs"
+import { createClient } from "@supabase/supabase-js"
 
-export const runtime: ServerRuntime = "edge"
+export const runtime: ServerRuntime = "edge" // Consider Node runtime if using service role key
 
 export async function POST(request: Request) {
   const json = await request.json()
@@ -16,7 +17,6 @@ export async function POST(request: Request) {
 
   try {
     const profile = await getServerProfile()
-
     checkApiKey(profile.openai_api_key, "OpenAI")
 
     const openai = new OpenAI({
@@ -24,47 +24,61 @@ export async function POST(request: Request) {
       organization: profile.openai_organization_id
     })
 
-    // Get the last user message
-    const lastUserMessage = messages[messages.length - 1]?.content || ""
+    // 1) Last user message, every time
+    const lastUserMessage =
+      Array.isArray(messages) && messages.length > 0
+        ? messages.slice().reverse().find((m: any) => m.role === "user")?.content ?? ""
+        : ""
 
-    // Search Crucible insights
-    let crucibleContext = ""
-    try {
-      const crucibleResponse = await fetch(
-  `${request.url.split('/api/')[0]}/api/retrieval/crucible`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ userInput: lastUserMessage })
-        }
-      )
+    // 2) Always-on RAG: embed and hit Supabase RPC
+    let crucibleInlineInsights = ""
+    if (lastUserMessage) {
+      try {
+        const emb = await openai.embeddings.create({
+          model: "text-embedding-3-small",
+          input: lastUserMessage
+        })
+        const queryEmbedding = emb.data[0].embedding.map(Number)
 
-      if (crucibleResponse.ok) {
-        const { results } = await crucibleResponse.json()
-        if (results && results.length > 0) {
-          crucibleContext = "\n\n=== CRUCIBLE KNOWLEDGE BASE ===\n"
-          results.forEach((insight: any, index: number) => {
-            crucibleContext += `\n[Insight ${index + 1}]`
-            crucibleContext += `\nCategory: ${insight.primary_tag} → ${insight.secondary_tag} → ${insight.tertiary_tag}`
-            crucibleContext += `\nProblem: ${insight.problem_statement}`
-            if (insight.solution_given) crucibleContext += `\nSolution: ${insight.solution_given}`
-            if (insight.implementation_steps) crucibleContext += `\nSteps: ${insight.implementation_steps}`
-            if (insight.financial_impact) crucibleContext += `\nFinancial Impact: ${insight.financial_impact}`
-            if (insight.power_quote) crucibleContext += `\nKey Quote: "${insight.power_quote}"`
-            crucibleContext += "\n"
-          })
+        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+        const supabaseServiceRole = process.env.SUPABASE_SERVICE_ROLE_KEY!
+        const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRole)
+
+        const { data: insights, error: ragError } = await supabaseAdmin.rpc(
+          "search_extraction_insights_v2",
+          { query_embedding: queryEmbedding, match_limit: 8 }
+        )
+        if (ragError) console.error("RAG RPC error:", ragError.message)
+
+        if (Array.isArray(insights) && insights.length) {
+          const short = insights
+            .map((i: any, idx: number) =>
+              [
+                `#${idx + 1} [${[i.primary_tag, i.secondary_tag, i.tertiary_tag].filter(Boolean).join(" / ")}]`,
+                `Problem: ${i.problem_statement ?? ""}`,
+                i.solution_given ? `Solution: ${i.solution_given}` : "",
+                i.financial_impact ? `Impact: ${i.financial_impact}` : "",
+                i.power_quote ? `Quote: ${i.power_quote}` : ""
+              ]
+                .filter(Boolean)
+                .join("\n")
+            )
+            .join("\n\n")
+
+          crucibleInlineInsights =
+            "Use the following Crucible insights if relevant. Prefer precise, operational recommendations. If you use them, keep them concise and concrete.\n\n" +
+            short +
+            "\n"
         }
+      } catch (e) {
+        console.error("Crucible RAG pipeline failed:", e)
       }
-    } catch (error) {
-      console.error("Error fetching Crucible insights:", error)
     }
 
-   // Add system message with Crucible context and Socratic instructions
+    // 3) Single system message that always includes the inline insights
     const systemMessage = {
       role: "system",
-      content: `You are a specialized AI coach for the residential home services industry, based on 20 years of industry expertise and the Crucible Audit framework.
+      content: `${crucibleInlineInsights}You are a specialized AI coach for the residential home services industry, based on 20 years of industry expertise and the Crucible Audit framework.
 
 RESPONSE STRATEGY - TRIANGULATE FAST:
 - If the question is vague: Ask 1-2 sharp clarifying questions MAX, then give your best answer
@@ -89,11 +103,7 @@ Vague question: "How do I increase revenue?"
 Response: "Revenue is a result. What's the constraint - your call booking rate, average ticket, conversion rate, or capacity? Or are you dealing with seasonal fluctuations that need smoothing?"
 
 Clear question: "Explain how call booking rate affects revenue"
-Response: "Call booking rate is the percentage of inbound calls that convert to booked jobs. If you're getting 100 calls/day and booking 60%, that's 60 jobs. Increase that to 70% and you've added 10 jobs/day without spending a dime on marketing. Most companies leave 15-30% on the table here due to poor call handling, no urgency, or weak process."
-
-${crucibleContext}
-
-If Crucible insights are provided above, use them to inform your response. Reference specific insights when relevant to build credibility and provide evidence-based guidance.`
+Response: "Call booking rate is the percentage of inbound calls that convert to booked jobs. If you're getting 100 calls/day and booking 60%, that's 60 jobs. Increase that to 70% and you've added 10 jobs/day without spending a dime on marketing. Most companies leave 15-30% on the table here due to poor call handling, no urgency, or weak process."`
     }
 
     const modifiedMessages = [systemMessage, ...messages]
@@ -111,18 +121,15 @@ If Crucible insights are provided above, use them to inform your response. Refer
     })
 
     const stream = OpenAIStream(response)
-
     return new StreamingTextResponse(stream)
   } catch (error: any) {
     let errorMessage = error.message || "An unexpected error occurred"
     const errorCode = error.status || 500
 
     if (errorMessage.toLowerCase().includes("api key not found")) {
-      errorMessage =
-        "OpenAI API Key not found. Please set it in your profile settings."
+      errorMessage = "OpenAI API Key not found. Please set it in your profile settings."
     } else if (errorMessage.toLowerCase().includes("incorrect api key")) {
-      errorMessage =
-        "OpenAI API Key is incorrect. Please fix it in your profile settings."
+      errorMessage = "OpenAI API Key is incorrect. Please fix it in your profile settings."
     }
 
     return new Response(JSON.stringify({ message: errorMessage }), {
